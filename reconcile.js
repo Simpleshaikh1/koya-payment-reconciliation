@@ -5,14 +5,39 @@
 
 const fs = require("fs");
 
+// Amounts sometimes arrive as strings with thousands separators, e.g. "4,804.15".
+function parseAmount(value) {
+  if (typeof value === "number") return value;
+  return Number(String(value).replace(/,/g, ""));
+}
+
+// Keep only the latest attempt for each txn_id.
+const latest = new Map();
+
+const lines = fs.readFileSync("payments.jsonl", "utf8").split("\n");
+for (const line of lines) {
+  if (line.trim().length === 0) continue;
+
+  let event;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    continue; // unreadable line
+  }
+
+  if (!event || !event.txn_id) continue; // no txn_id
+
+  const prev = latest.get(event.txn_id);
+  if (!prev || Date.parse(event.ts) >= Date.parse(prev.ts)) {
+    latest.set(event.txn_id, event);
+  }
+}
+
 let total = 0;
 let count = 0;
-
-const lines = fs.readFileSync("payments.jsonl", "utf8").split("\n").filter((l) => l.length > 0);
-for (const line of lines) {
-  const event = JSON.parse(line);
+for (const event of latest.values()) {
   if (event.status === "success") {
-    total += Number(event.amount);
+    total += parseAmount(event.amount);
     count += 1;
   }
 }
